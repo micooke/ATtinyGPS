@@ -3,161 +3,156 @@
 
 #include <TimeDateTools.h>
 
-// Constants
-//#define knots2kph 1852
-//#define knots2mps 1852/(60*60) // 0.51444444444;
-
 // ParseGPS
-// Examples: 
-// $GPRMC,dddddt.ddm,A,eeae.eeee,l,eeeae.eeee,o,djdk,ddd.dc,dddddy,,,A*??
+// Examples:
+// token:       0    1     2     3      4     5  6      7      8
 // $GPRMC,194509.000,A,4042.6142,N,07400.4168,W,2.03,221.11,160412,,,A*77
-//
-// $GPZDA,dddddt.ddm,dD,dM,dddY,,*??
-// $GPZDA,035751.000,08,12,2015,,*5E
+// token:    0       1    2      3    4 5  6  7     8  9  10  11
+// $GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47
 
-char msg[7] = "$$$$$$"; 
-const char fmt[7] = "$GPRMC";
-const char rmc[] = "$GPRMC,dddddt.ddm,A,eeae.eeee,l,eeeae.eeee,o,djdk,ddd.dc,dddddy,,,A*??";
-#ifdef _GPZDA_
-const char zda[] = "$GPZDA,dddddt.ddm,dD,dM,dddY,,*??";
-#endif
+/*
+case 0: break;  // INVALID / NOT PARSED
+case 1: break;  // GLL
+case 2: break;  // RMC
+case 3 : break;  // VTG
+case 4 : break;  // GGA
+case 5 : break;  // GSA
+case 6 : break;  // GSV
+case 7 : break;  // GRS
+case 8 : break;  // GST
+case 9 : break;  // ?
+case 10: break;  // ?
+case 11: break; // ?
+case 12: break; // ?
+case 13: break; // ?
+case 14: break; // MALM
+case 15: break; // MEPH
+case 16: break; // MDPG
+case 17: break; // MDBG
+case 18: break; // ZDA
+case 19: break; // MCHN
+*/
+
+char msg[7] = "$$$$$$";
 
 class ATtinyGPS
 {
 private:
-	float kph_ = 0.0f;
-	float kph_avg_ = 0.0f;
 	int state_ = 0;
-	unsigned int temp_ = 0;
-	long ltmp_ = 0;
-	boolean is_complete_ = false;
 	boolean new_data_ = false;
-	uint8_t nmea_index_ = 0;
 	
+	int32_t lhs_ = 0;
+	uint16_t rhs_ = 0;
+	uint8_t dp_ = 0, token_ = 0;
+	boolean LR_switch = false;
 public:
+	uint8_t nmea_index = 0;
+
 	// GPS variables
-	unsigned int Time, Date, Knots, Course;
+	uint32_t Time, Date, Course;
 	uint8_t hh, mm, ss, ms;
 	uint8_t DD, MM, YY;
 	uint16_t YYYY;
 	int8_t timezone_MM, timezone_HH, GPS_to_UTC_offset;
-	long Lat, Long;
+
+	float Lat, Long, Alt, Height, Knots;
+	
+	uint8_t satellites = 0;
+	uint8_t quality = 0;
 	boolean IsValid = false;
-	ATtinyGPS() : timezone_HH(9), timezone_MM(30), GPS_to_UTC_offset(-17), IsValid(false){};
+
+	ATtinyGPS() : timezone_HH(9), timezone_MM(30), GPS_to_UTC_offset(-17), IsValid(false) {};
+
 	void parse(char c)
 	{
-		if (c == '$') { state_ = 0; temp_ = 0; is_complete_ = false; msg[5] = '?'; new_data_ = false; }
+		if (c == '$')
+		{
+			lhs_ = 0; rhs_ = 0; LR_switch = false;
+			token_ = 0; state_ = 0; nmea_index = 0;
+			msg[5] = '?'; new_data_ = false;
+		}
 		
-		char mode;
-		
+		// Start recording the NMEA message type
 		if (state_ < 6)
 		{
 			msg[state_] = c;
 			state_++;
 			return;
 		}
+		// Set the NMEA index
 		else if (state_ == 6)
 		{
-			if (strcmp(msg, "$GPRMC"))
-			{
-				IsValid = true;
-				nmea_index_ = 1;
-			}
-#ifdef _GPZDA_
-			else if (strcmp(msg, "$GPZDA"))
-			{
-				IsValid = true;
-				nmea_index_ = 17;
-			}
-#endif
-		}
-		else
-		{
-			switch (nmea_index_)
-			{
-			case 1:
-				mode = rmc[state_];
-				break;
-#ifdef _GPZDA_
-			case 17:
-				mode = zda[state_];
-				break;
-#endif
-			}
-		}
+			if (strcmp(msg, "$GPRMC") == 0) { nmea_index = 1; }
+			else if (strcmp(msg, "$GPGGA") == 0) { nmea_index = 4; }
+			else { Serial.print("error:"); Serial.print(msg); nmea_index = 0; }
 
-		// Check that a valid message format is being passed
-		if ( !IsValid | ((mode == ',') & (c != ',')) )
-		{
-			IsValid = false;
 			state_++;
-			return;
 		}
-
-		// The nmea string is complete (or near enough) if the format is '?'
-		if (mode == '?')
+		// Parse the data
+		else if ( nmea_index > 0 )
 		{
-			if (is_complete_ == false)
+			switch (c)
 			{
-				msg[5] = '!'; // Set the last character to ! to signify completion (? indicates in progress)
-
-				if (nmea_index_ == 1) // GPRMC - the start of a new data frame
+				// Validity indicators:
+				// 
+				// RMC token 1
+				// A=*A-active, V-void
+				//
+				// RMC token 11
+				// GLL token 6
+				// *A-autonomous, *D-differential, E-Estimated, N-not valid, S-Simulator
+				//
+				// GGA token 5
+				// 0 = invalid, GPS fix, DGPS fix, PPS fix, Real Time Kinematic (RTK), Float RTK, estimated (dead reckoning), Manual input, 8 = Simulation
+			case 'A':
+				// RMC: token 1
+				quality = 1;
+				IsValid = true; break;
+			case 'V':
+				// RMC: token 1
+				quality = 0;
+				IsValid = false; break;
+			case 'N':
+				// N/S(-ve) - RMC: token 3
+				// N/S(-ve) - GGA: token 2
+				if ( (token_ == 3) | (token_ == 2) ) { Lat = -Lat; } break;
+			case 'E':
+				// E/W(-ve) - RMC: token 5
+				// E/W(-ve) - GGA: token 4
+				if ( (token_ == 5) | (token_ == 4) ) { Long = -Long; } break;
+			case '.':
+				LR_switch = true;
+				break;
+			case ',':
+				saveToken();
+				token_++;
+				LR_switch = false;
+				break;
+			case '*':
+				nmea_index = 0;
+				new_data_ = true;
+				saveToken();
+				// may have to change this in 85 years...
+				YYYY = 2000 + YY;
+				// Add the local timezone to the GPS time
+				// And add the GPS to UTC offset
+				// (GPS doesnt compensate for leap seconds, as of Dec 2015 its 17 seconds ahead of UTC)
+				addTimezone(ss, mm, hh, MM, DD, YY, timezone_HH, timezone_MM, GPS_to_UTC_offset);
+				break;
+			default:
+				char d = c - '0';
+				if (LR_switch) // Right
 				{
-					new_data_ = true;
+					rhs_ = rhs_ * 10 + d;
+					dp_++;
 				}
-				is_complete_ = true;
-				process();
+				else // Left
+				{
+					lhs_ = lhs_ * 10 + d;
+				}
+				break;
 			}
 		}
-
-		// Process $GPRMC messages
-		if (nmea_index_ == 1)
-		{
-			char mode = rmc[state_++];
-			char d = c - '0';
-			// d=decimal digit
-			if (mode == 'd') { temp_ = temp_ * 10 + d; }
-			// t=Time - hhmm
-			else if (mode == 't') { Time = temp_ * 10 + d; temp_ = 0; }
-			// m=Millisecs
-			else if (mode == 'm') { ms = temp_ * 10 + d; temp_ = 0; ltmp_ = 0; }
-			// l=Latitude - in minutes*10000
-			else if (mode == 'l') { if (c == 'N') Lat = ltmp_; else Lat = -ltmp_; temp_ = 0; ltmp_ = 0; }
-			// o=Longitude - in minutes*10000
-			else if (mode == 'o') { if (c == 'E') Long = ltmp_; else Long = -ltmp_; temp_ = 0; ltmp_ = 0; }
-			// j/k=Speed - in knots*100
-			else if (mode == 'j') { if (c != '.') { temp_ = temp_ * 10 + d; state_--; } }
-			else if (mode == 'k') { Knots = temp_ * 10 + d; temp_ = 0; }
-			// c=Course (Track) - in degrees*100
-			else if (mode == 'c') { Course = temp_ * 10 + d; temp_ = 0; }
-			// y=Date - ddmm
-			else if (mode == 'y') { Date = temp_ * 10 + d; }
-			// A=*A-active, V-void, *A-autonomous, *D-differential, E-Estimated, N-not valid, S-Simulator
-			else state_ = 0;
-		}
-#ifdef _GPZDA_
-		// Process $GPZDA messages
-		else if (nmea_index_ == 17)
-		{
-			char mode = zda[state_++];
-			char d = c - '0';
-			// d=decimal digit
-			if (mode == 'd') { temp_ = temp_ * 10 + d; }
-			// t=Time - hhmm
-			else if (mode == 't') { Time = temp_ * 10 + d; temp_ = 0; }
-			// m=Millisecs
-			else if (mode == 'm') { ms = temp_ * 10 + d; temp_ = 0; }
-			// D=Day
-			else if (mode == 'D') { DD = temp_ * 10 + d; temp_ = 0; }
-			// M=Month
-			else if (mode == 'M') { mm = temp_ * 10 + d; temp_ = 0; }
-			// Y=Year
-			else if (mode == 'Y') { YYYY = temp_ * 10 + d; temp_ = 0; }
-			else state_ = 0;
-		}
-#endif
-		// increment the state
-		state_++;
 	}
 
 	boolean new_data()
@@ -170,60 +165,60 @@ public:
 		return false;
 	}
 private:
-	
-	void process()
+	void saveToken()
 	{
-		switch (nmea_index_)
+		switch (token_)
 		{
-			case 0: break;  // GLL
-			case 1: // RMC
-				processRMC(); break;
-			case 17: break;// ZDA
-				processZDA(); break;
-			case 18: break; // MCHN
-				break;
-			/*
-			case 2: break;  // VTG
-			case 3: break;  // GGA
-			case 4: break;  // GSA
-			case 5: break;  // GSV
-			case 6: break;  // GRS
-			case 7: break;  // GST
-			case 8: break;  // ?
-			case 9: break;  // ?
-			case 10: break; // ?
-			case 11: break; // ?
-			case 12: break; // ?
-			case 13: break; // MALM
-			case 14: break; // MEPH
-			case 15: break; // MDPG
-			case 16: break; // MDBG
-			*/
+		case 0: // Time: hhmmss.ms
+			Time = lhs_;
+			ms = rhs_;
+			ss = Time % 100; Time /= 100;
+			mm = Time % 100; Time /= 100;
+			hh = Time % 100; Time = lhs_;
+			break;
+		case 1:
+			if (nmea_index == 4) { Lat = lhs_ + static_cast<float>(rhs_) / pow(10.0, dp_); }
+			break;
+		case 2:
+			if (nmea_index == 1) { Lat = lhs_ + static_cast<float>(rhs_) / pow(10.0, dp_); }
+			break;
+		case 3:
+			if (nmea_index == 4) { Long = lhs_ + static_cast<float>(rhs_) / pow(10.0, dp_); }
+			break;
+		case 4:
+			if (nmea_index == 1) { Long = lhs_ + static_cast<float>(rhs_) / pow(10.0, dp_); }
+			break;
+		case 5:
+			if (nmea_index == 4) { quality = lhs_; }
+			break;
+		case 6:
+			if (nmea_index == 1) { Knots = lhs_ + static_cast<float>(rhs_) / pow(10.0, dp_); }
+			if (nmea_index == 4) { satellites = lhs_; }
+			break;
+		case 7:
+			//  1 : RMC -> Track angle in degrees true
+			break;
+		case 8:
+			if (nmea_index == 1)
+			{ 
+				//  1 : RMC -> Date: DDMMYY
+				Date = lhs_;
+				YY = Date % 100; Date /= 100;
+				MM = Date % 100; Date /= 100;
+				DD = Date % 100; Date = lhs_;
+			}
+			if (nmea_index == 4) {  Alt = lhs_ + static_cast<float>(rhs_) / pow(10.0, dp_); }
+			break;
+		case 9:
+			break;
+		case 10:
+			if (nmea_index == 4) {  Height = lhs_ + static_cast<float>(rhs_) / pow(10.0, dp_); }
+			break;
 		}
 
-		// Add the GPS to UTC offset
-		// (GPS doesnt compensate for leap seconds, as of Dec 2015 its 17 seconds ahead of UTC)
-		int8_t gps_ss = ss + GPS_to_UTC_offset;
-
-		// Add the local timezone to the GPS time
-		addTimezone(ss, mm, hh, MM, DD, YY, timezone_HH, timezone_MM, gps_ss);
-	}
-	void processRMC()
-	{
-		hh = static_cast<uint8_t>(Time / 100);
-		mm = Time % 100;
-		DD = static_cast<uint8_t>(Date / 10000);
-		mm = static_cast<uint8_t>(Date / 100) % 100;
-		YY = Date % 100;
-		YYYY = 2000 + YY; // may have to change this in 85 years...
-	}
-	void processZDA()
-	{
-#ifdef _GPZDA_
-		hh = static_cast<uint8_t>(Time / 100);
-		mm = Time % 100;
-		YY = YYYY % 100;
-#endif
+		// clear temp variables
+		lhs_ = 0;
+		rhs_ = 0;
 	}
 };
 
