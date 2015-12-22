@@ -137,7 +137,7 @@ public:
 				// Add the local timezone to the GPS time
 				// And add the GPS to UTC offset
 				// (GPS doesnt compensate for leap seconds, as of Dec 2015 its 17 seconds ahead of UTC)
-				addTimezone(ss, mm, hh, MM, DD, YY, timezone_HH, timezone_MM, GPS_to_UTC_offset);
+				addTimezone<uint8_t>(ss, mm, hh, MM, DD, YY, timezone_HH, timezone_MM, GPS_to_UTC_offset);
 				break;
 			default:
 				char d = c - '0';
