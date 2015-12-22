@@ -60,8 +60,8 @@ boolean is_leap_year(const uint16_t &_year)
 
 	return (is_DivBy4 & (!is_DivBy100 | is_DivBy400));
 }
-
-uint16_t to_day_of_the_year(const uint8_t &_DD, const uint8_t &_MM, const boolean &_is_leap_year)
+template <typename T>
+uint16_t to_day_of_the_year(const T &_DD, const T &_MM, const boolean &_is_leap_year)
 {
 	// if its a leap year and the month is March -> December, add +1
 	return cumulative_days_in_a_month(_MM - 1) + _DD + (_is_leap_year & _MM > 1);
@@ -72,7 +72,8 @@ uint16_t to_day_of_the_year(const uint8_t &_DD, const uint8_t &_MM, const boolea
 //
 // 1. set TD0 such that it stays within [0:thisLimit]
 // 2. set TD1 such that it stays within [0:prevLimit]
-void timeDateCompensate(const int8_t &input, uint8_t &TD0, int8_t &TD1, const uint8_t &prevLimit, const uint8_t &thisLimit)
+template <typename T>
+void timeDateCompensate(const int8_t &input, T &TD0, int8_t &TD1, const uint8_t &prevLimit, const uint8_t &thisLimit)
 {
 	if (input > (thisLimit - 1))
 	{
@@ -86,13 +87,15 @@ void timeDateCompensate(const int8_t &input, uint8_t &TD0, int8_t &TD1, const ui
 	}
 }
 
-void timeDateCompensate(const int8_t &input, uint8_t &TD0, int8_t &TD1, const uint8_t &thisLimit)
+template <typename T>
+void timeDateCompensate(const int8_t &input, T &TD0, int8_t &TD1, const uint8_t &thisLimit)
 {
 	timeDateCompensate(input, TD0, TD1, thisLimit, thisLimit);
 }
 
 // Note: I normally use the gps to utc seconds value (-17seconds as of Dec 2015) for _timezone_secs
-void addTimezone(uint8_t &secs, uint8_t &mins, uint8_t &hour, uint8_t &DD, uint8_t &MM, uint8_t &YY, const int8_t &_timezone_hours, const int8_t &_timezone_mins, const int8_t _timezone_secs = 0)
+template <typename T>
+void addTimezone(T &secs, T &mins, T &hour, T &DD, T &MM, T &YY, const int8_t &_timezone_hours, const int8_t &_timezone_mins, const int8_t _timezone_secs = 0)
 {
 	int8_t secs_ = secs + _timezone_secs;
 	int8_t mins_ = mins + _timezone_mins;
@@ -107,16 +110,16 @@ void addTimezone(uint8_t &secs, uint8_t &mins, uint8_t &hour, uint8_t &DD, uint8
 	const boolean is_leap_year_ = is_leap_year(decade_ * 100 + year_);
 
 	// compensate for the timezone
-	timeDateCompensate(secs_, secs, mins_, 60); // secs
-	timeDateCompensate(mins_, mins, hour_, 60); // mins
-	timeDateCompensate(hour_, hour, day_, 60); // hour
+	timeDateCompensate<T>(secs_, secs, mins_, 60); // secs
+	timeDateCompensate<T>(mins_, mins, hour_, 60); // mins
+	timeDateCompensate<T>(hour_, hour, day_, 60); // hour
 
 	uint8_t prevMonthDays = days_in_a_month(prevMonth - 1) + ((prevMonth == 2) & is_leap_year_); // Add 1 day if in Feb on a leapyear
 	uint8_t thisMonthDays = days_in_a_month(month_ - 1) + ((month_ == 2) & is_leap_year_); // Add 1 day if in Feb on a leapyear
-	timeDateCompensate(day_, DD, month_, prevMonthDays, thisMonthDays); // day
+	timeDateCompensate<T>(day_, DD, month_, prevMonthDays, thisMonthDays); // day
 
-	timeDateCompensate(month_, MM, year_, 12); // month
-	timeDateCompensate(year_, YY, decade_, 100); // year
+	timeDateCompensate<T>(month_, MM, year_, 12); // month
+	timeDateCompensate<T>(year_, YY, decade_, 100); // year
 }
 
 #endif
