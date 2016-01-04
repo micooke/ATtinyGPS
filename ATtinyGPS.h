@@ -53,7 +53,8 @@ public:
 	uint8_t hh, mm, ss, ms;
 	uint8_t DD, MM, YY;
 	uint16_t YYYY;
-	int8_t timezone_MM, timezone_HH, GPS_to_UTC_offset;
+	int8_t timezone_MM, timezone_HH;
+	int8_t GPS_to_UTC_offset; // -17 (seconds - as of 1/1/16)
 
 	float Lat, Long, Alt, Height, Knots;
 	
@@ -61,7 +62,7 @@ public:
 	uint8_t quality = 0;
 	boolean IsValid = false;
 
-	ATtinyGPS() : timezone_HH(9), timezone_MM(30), GPS_to_UTC_offset(-17), IsValid(false) {};
+	ATtinyGPS() : timezone_HH(9), timezone_MM(30), GPS_to_UTC_offset(0), IsValid(false) {};
 
 	void parse(char c)
 	{

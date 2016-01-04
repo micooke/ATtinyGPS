@@ -74,7 +74,7 @@ void loop()
     // Time
     ttl.print(gps.hh);ttl.print(F(":"));
     ttl.print(gps.mm);ttl.print(F(":"));
-    ttl.print(gps.ss);ttl.print(F("/"));
+    ttl.print(gps.ss);ttl.print(F("."));
     ttl.println(gps.ms);
 
     // Lat Long
