@@ -64,7 +64,24 @@ template <typename T>
 uint16_t to_day_of_the_year(const T &_DD, const T &_MM, const boolean &_is_leap_year)
 {
 	// if its a leap year and the month is March -> December, add +1
-	return cumulative_days_in_a_month(_MM - 1) + _DD + (_is_leap_year & _MM > 1);
+	return cumulative_days_in_a_month(_MM - 1) + _DD + (_is_leap_year & (_MM > 1));
+}
+
+template <typename T>
+void from_day_of_the_year(const uint16_t &doty, T &_DD, T &_MM, const boolean &_is_leap_year)
+{
+	for (uint8_t i = 1; i < 12; ++i)
+	{
+		uint8_t k = (_is_leap_year & (i > 1));
+		if (doty <= cumulative_days_in_a_month(i) + k)
+		{
+			_MM = i;
+			_DD = doty - (cumulative_days_in_a_month(_MM - 1) + k);
+			return;
+		}
+	}
+	_DD = 0;
+	_MM = 0;
 }
 
 // example: input = day (unbounded), TD0 = day (bounded), TD1 = month (bounded), prevLimit = days in last month, thisLimit = days in this month
