@@ -13,7 +13,7 @@ const uint16_t cumulativeDIAM[12] PROGMEM = { 0 , 31, 59, 90,120,151,181,212,243
 
 inline uint8_t ascii_to_int(const char &c0, const char &c1)
 {
-	return (c1 - '0') * 10 + (c0 - '0');
+	return (c0 - '0') * 10 + (c1 - '0');
 }
 
 #if !defined(REQUIRE_TIMEDATESTRING)
@@ -33,6 +33,7 @@ void TimeString_to_HHMMSS(const char timeString[], uint8_t &hh, uint8_t &mm, uin
 void DateString_to_DDMMYY(const char dateString[], uint8_t &DD, uint8_t &MM, uint8_t &YY)
 {
 	//Example: "Feb 12 1996"
+	//         "Jan  1 2016"
 
 	// convert the Month string to Month index [0->12]
 	// Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
@@ -47,7 +48,15 @@ void DateString_to_DDMMYY(const char dateString[], uint8_t &DD, uint8_t &MM, uin
 	case 'D': MM = 12; break;
 	}
 
-	DD = ascii_to_int(dateString[4], dateString[5]); // [6] = ' '
+	// if the day number is < 10, the day is (unfortunately) space padded instead of zero-padded
+	if (dateString[4] == ' ')
+	{
+		DD = ascii_to_int('0', dateString[5]);
+	}
+	else
+	{
+		DD = ascii_to_int(dateString[4], dateString[5]);
+	}
 	YY = ascii_to_int(dateString[9], dateString[10]);
 }
 #endif
