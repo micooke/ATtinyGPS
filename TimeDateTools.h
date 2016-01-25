@@ -4,6 +4,10 @@
 #include <Arduino.h>
 #include <avr/pgmspace.h>
 
+#if !defined(REQUIRE_TIMEDATESTRING)
+#define REQUIRE_TIMEDATESTRING 0
+#endif
+
 #if !defined(_DEBUG)
 #define _DEBUG 1
 #endif

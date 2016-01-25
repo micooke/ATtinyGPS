@@ -3,14 +3,47 @@
 
 #include <TimeDateTools.h>
 
-// ParseGPS
-// Examples:
-// token:       0    1     2     3      4     5  6      7      8
-// $GPRMC,194509.000,A,4042.6142,N,07400.4168,W,2.03,221.11,160412,,,A*77
-// token:    0       1    2      3    4 5  6  7     8  9  10  11
-// $GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47
+/*
+ Examples:
+token:   0    1     2    3      4    5    6     7     8      9 10 11
+$GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A
+      RMC          Recommended Minimum sentence C
+0     123519       Fix taken at 12:35:19 UTC
+1     A            Status A=active or V=Void.
+2,3   4807.038,N   Latitude 48 deg 07.038' N
+4,5   01131.000,E  Longitude 11 deg 31.000' E
+6     022.4        Speed over the ground in knots
+7     084.4        Track angle in degrees True
+8     230394       Date - 23rd of March 1994
+9,10  003.1,W      Magnetic Variation
+11    *6A          The checksum data, always begins with *
+ 
+token:    0       1    2      3    4 5  6  7     8  9  10  11  12
+$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47
+      GGA          Global Positioning System Fix Data
+0     123519       Fix taken at 12:35:19 UTC
+1,2   4807.038,N   Latitude 48 deg 07.038' N
+3,4   01131.000,E  Longitude 11 deg 31.000' E
+5     1            Fix quality: 0 = invalid
+      1 = GPS fix (SPS)
+      2 = DGPS fix
+      3 = PPS fix
+      4 = Real Time Kinematic
+      5 = Float RTK
+      6 = estimated (dead reckoning) (2.3 feature)
+      7 = Manual input mode
+      8 = Simulation mode
+6     08           Number of satellites being tracked
+7     0.9          Horizontal dilution of position
+8,9   545.4,M      Altitude, Meters, above mean sea level
+10,11 46.9,M       Height of geoid (mean sea level) above WGS84 ellipsoid
+      (empty field) time in seconds since last DGPS update
+      (empty field) DGPS station ID number
+12    *47          the checksum data, always begins with *
+*/
 
 /*
+switch(nmea_index)
 case 0: break;  // INVALID / NOT PARSED
 case 1: break;  // GLL
 case 2: break;  // RMC
@@ -45,6 +78,7 @@ private:
 	uint16_t rhs_ = 0;
 	uint8_t dp_ = 0, token_ = 0;
 	boolean LR_switch = false;
+   int8_t timezone_MM, timezone_HH;   
 public:
 	uint8_t nmea_index = 0;
 
@@ -53,7 +87,7 @@ public:
 	uint8_t hh, mm, ss, ms;
 	uint8_t DD, MM, YY;
 	uint16_t YYYY;
-	int8_t timezone_MM, timezone_HH;
+
 	int8_t GPS_to_UTC_offset; // -17 (seconds - as of 1/1/16)
 
 	float Lat, Long, Alt, Height, Knots;
@@ -62,8 +96,18 @@ public:
 	uint8_t quality = 0;
 	boolean IsValid = false;
 
-	ATtinyGPS() : timezone_HH(9), timezone_MM(30), GPS_to_UTC_offset(0), IsValid(false) {};
-
+	ATtinyGPS() : timezone_HH(0), timezone_MM(0), GPS_to_UTC_offset(0), IsValid(false) {};
+   
+   void setTimezone(const int8_t &_hour, const int8_t &_mins)
+   {
+      timezone_HH = _hour;
+      timezone_MM = _mins;
+   }
+   void getTimezone(int8_t &_hour, int8_t &_mins)
+   {
+      _hour = timezone_HH;
+      _mins = timezone_MM;
+   } 
 	void parse(char c)
 	{
 		if (c == '$')
@@ -85,7 +129,13 @@ public:
 		{
 			if (strcmp(msg, "$GPRMC") == 0) { nmea_index = 1; }
 			else if (strcmp(msg, "$GPGGA") == 0) { nmea_index = 4; }
-			else { Serial.print("error:"); Serial.print(msg); nmea_index = 0; }
+			else
+         {
+            #if (_DEBUG > 0)
+            Serial.print("error:"); Serial.print(msg);
+            #endif
+            nmea_index = 0;
+         }
 
 			state_++;
 		}
@@ -137,8 +187,8 @@ public:
 				YYYY = 2000 + YY;
 				// Add the local timezone to the GPS time
 				// And add the GPS to UTC offset
-				// (GPS doesnt compensate for leap seconds, as of Dec 2015 its 17 seconds ahead of UTC)
-				addTimezone<uint8_t>(ss, mm, hh, MM, DD, YY, timezone_HH, timezone_MM, GPS_to_UTC_offset);
+				// (GPS doesn't compensate for leap seconds, as of Dec 2015 its 17 seconds ahead of UTC)
+				addTimezone<uint8_t>(ss, mm, hh, DD, MM, YY, timezone_HH, timezone_MM, GPS_to_UTC_offset);
 				break;
 			default:
 				char d = c - '0';
@@ -176,6 +226,11 @@ private:
 			ss = Time % 100; Time /= 100;
 			mm = Time % 100; Time /= 100;
 			hh = Time % 100; Time = lhs_;
+         #if (_DEBUG == 2)
+         Serial.println();
+         Serial.print("RAW TIME : "); Serial.println(lhs_);
+         Serial.print("PROCESSED hh:mm:ss : "); Serial.print(hh); Serial.print(":"); Serial.print(mm); Serial.print(":");Serial.println(ss);
+         #endif
 			break;
 		case 1:
 			if (nmea_index == 4) { Lat = lhs_ + static_cast<float>(rhs_) / pow(10.0, dp_); }
@@ -207,6 +262,11 @@ private:
 				YY = Date % 100; Date /= 100;
 				MM = Date % 100; Date /= 100;
 				DD = Date % 100; Date = lhs_;
+            #if (_DEBUG == 2)
+            Serial.println();
+            Serial.print("RAW DATE : "); Serial.println(lhs_);
+            Serial.print("PROCESSED DD/MM/YY: "); Serial.print(DD); Serial.print("/"); Serial.print(MM); Serial.print("/"); Serial.println(YY);
+            #endif
 			}
 			if (nmea_index == 4) {  Alt = lhs_ + static_cast<float>(rhs_) / pow(10.0, dp_); }
 			break;
