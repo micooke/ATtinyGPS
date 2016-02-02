@@ -132,8 +132,8 @@ public:
 			else
          {
             #if (_DEBUG > 0)
-            Serial.print("error:"); Serial.print(msg);
-            #endif
+            Serial.print("error : NMEA string "); Serial.print(msg); Serial.println(" is not supported");
+			#endif
             nmea_index = 0;
          }
 
