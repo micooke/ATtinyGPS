@@ -1,6 +1,7 @@
 #ifndef ATtinyGPS_h
 #define ATtinyGPS_h
 
+#include <SoftwareSerial.h>
 #include <TimeDateTools.h>
 
 /*
@@ -66,11 +67,10 @@ case 18: break; // ZDA
 case 19: break; // MCHN
 */
 
-static char msg[7] = "$$$$$$";
-
 class ATtinyGPS
 {
    private:
+   char msg[7] = {'$'};
    int state_ = 0;
    boolean new_data_ = false;
    
@@ -78,7 +78,7 @@ class ATtinyGPS
    uint16_t rhs_ = 0;
    uint8_t dp_ = 0, token_ = 0;
    boolean LR_switch = false;
-   int8_t timezone_MM, timezone_HH;
+   int8_t timezone_HH, timezone_MM;
    public:
    uint8_t nmea_index = 0;
 
@@ -96,18 +96,50 @@ class ATtinyGPS
    uint8_t quality = 0;
    boolean IsValid = false;
    
-   ATtinyGPS() : timezone_HH(0), timezone_MM(0), GPS_to_UTC_offset(0), IsValid(false){};
+   ATtinyGPS() : timezone_HH(0), timezone_MM(0),
+   GPS_to_UTC_offset(0), IsValid(false),
+   DD(6), MM(1), YY(80), YYYY(1980) {}; // Set gps time to GPS epoch : UTC 00:00 on 06/Jan/1980
+   
+   void setup(SoftwareSerial &ttl)
+   {
+      // Setup the GPS
+      // send RMC & GGA only
+      //                    GLL,RMC,VTG,GGA,GSA,
+      ttl.println("$PMTK314,0,1,0,1,0,"
+      //GSV,GRS,GST,,,
+      "0,0,0,0,0,"
+      //,, , MALM,MEPH,
+      "0,0,0,0,0,"
+      //MDGP,MDBG,ZDA,MCHN*checksum
+      "0,0,0,0*28");
+      //ttl.println("$PMTK314,-1*04"); // reset NMEA sequences to system default
+
+      //1Hz update rate
+      ttl.println("$PMTK220,1000*1F");
+      //ttl.println("$PMTK220,100*2F");//10Hz update rate
+      //ttl.println("$PMTK220,200*2C");//5Hz update rate
+      
+      //ttl.println("$PMTK251,9600*17");
+      //ttl.println("$PMTK251,14400*29"); // Fastest we can go with the current parsing method with only minimal over-writing of serial buffer data (TinyGPS++ may be better?)
+      //ttl.println("$PMTK251,19200*22");
+      //ttl.println("$PMTK251,38400*27");
+      //ttl.println("$PMTK251,57600*2C");
+      //ttl.println("$PMTK251,115200*1F");
+      //ttl.println("$PMTK251,0*28\n"); // reset BAUD rate to system default
+   }
    
    void setTimezone(const int8_t &_hour, const int8_t &_mins)
    {
       timezone_HH = _hour;
       timezone_MM = _mins;
    }
+   
    void getTimezone(int8_t &_hour, int8_t &_mins)
    {
       _hour = timezone_HH;
       _mins = timezone_MM;
    }
+   
    void parse(char c)
    {
       if (c == '$')
@@ -183,12 +215,6 @@ class ATtinyGPS
             nmea_index = 0;
             new_data_ = true;
             saveToken();
-            // may have to change this in 85 years...
-            YYYY = 2000 + YY;
-            // Add the local timezone to the GPS time
-            // And add the GPS to UTC offset
-            // (GPS doesn't compensate for leap seconds, as of Dec 2015 its 17 seconds ahead of UTC)
-            addTimezone<uint8_t>(ss, mm, hh, DD, MM, YY, timezone_HH, timezone_MM, GPS_to_UTC_offset);
             break;
             default:
             char d = c - '0';
@@ -215,6 +241,7 @@ class ATtinyGPS
       }
       return false;
    }
+   
    private:
    void saveToken()
    {
@@ -230,6 +257,20 @@ class ATtinyGPS
          Serial.println();
          Serial.print("RAW TIME : "); Serial.println(lhs_);
          Serial.print("PROCESSED hh:mm:ss : "); Serial.print(hh); Serial.print(":"); Serial.print(mm); Serial.print(":");Serial.println(ss);
+         #endif
+         // Add the local timezone to the GPS time
+         // And add the GPS to UTC offset
+         // (GPS doesn't compensate for leap seconds, as of Dec 2015 its 17 seconds ahead of UTC)
+         #if (_DEBUG == 2)
+         Serial.print("GPS time : ");
+         print_time(mm,hh);
+         Serial.print(" @ ");
+         print_time(timezone_MM,timezone_HH, true);
+         #endif
+         addTimezone<uint8_t>(ss, mm, hh, DD, MM, YY, timezone_HH, timezone_MM, GPS_to_UTC_offset);
+         #if (_DEBUG == 2)
+         Serial.print("Local time : ");
+         print_time(mm,hh,true);
          #endif
          break;
          case 1:
@@ -260,6 +301,7 @@ class ATtinyGPS
             //  1 : RMC -> Date: DDMMYY
             Date = lhs_;
             YY = Date % 100; Date /= 100;
+            YYYY = 2000 + YY; // may have to change this in 85 years...
             MM = Date % 100; Date /= 100;
             DD = Date % 100; Date = lhs_;
             #if (_DEBUG == 2)
