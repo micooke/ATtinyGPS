@@ -184,7 +184,7 @@ void addTimezone(T &secs, T &mins, T &hour, T &DD, T &MM, T &YY, const int8_t &_
 	int8_t day_ = DD;
 	int8_t month_ = MM;
 	int8_t year_ = YY;
-	
+
 	const uint8_t prevMonth = (month_ == 1) ? 12 : month_ - 1;
 	int8_t decade_ = 20; // we dont actually do anything with this
 
@@ -197,7 +197,7 @@ void addTimezone(T &secs, T &mins, T &hour, T &DD, T &MM, T &YY, const int8_t &_
 
 	uint8_t prevMonthDays = days_in_a_month(prevMonth - 1) + ((prevMonth == 2) & is_leap_year_); // Add 1 day if in Feb on a leapyear
 	uint8_t thisMonthDays = days_in_a_month(month_ - 1) + ((month_ == 2) & is_leap_year_); // Add 1 day if in Feb on a leapyear
-	
+
 	timeDateCompensate<T>(day_, DD, month_, 1, prevMonthDays, thisMonthDays); // day
 	timeDateCompensate<T>(month_, MM, year_, 1, 12); // month
 	timeDateCompensate<T>(year_, YY, decade_, 0, 100); // year
