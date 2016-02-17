@@ -347,14 +347,14 @@ private:
 			// (GPS doesn't compensate for leap seconds, as of Dec 2015 its 17 seconds ahead of UTC)
 #if (_DEBUG == 2)
 			Serial.print("GPS time : ");
-			print_time(mm, hh);
+			print_time(hh, mm);
 			Serial.print(" @ ");
-			print_time(timezone_MM, timezone_HH, true);
+			print_time(timezone_HH, timezone_MM, true);
 #endif
-			addTimezone<uint8_t>(ss, mm, hh, DD, MM, YY, timezone_HH, timezone_MM, GPS_to_UTC_offset);
+			addTimezone<uint8_t>(hh, mm, ss, DD, MM, YY, timezone_HH, timezone_MM, GPS_to_UTC_offset);
 #if (_DEBUG == 2)
 			Serial.print("Local time : ");
-			print_time(mm, hh, true);
+			print_time(hh, mm, true);
 #endif
 			break;
 		case 1:

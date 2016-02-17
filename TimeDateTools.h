@@ -19,7 +19,7 @@ const uint16_t cumulativeDIAM[12] PROGMEM = { 0 , 31, 59, 90,120,151,181,212,243
 #define days_in_a_month(k) pgm_read_byte_near(DIAM + k)
 #define cumulative_days_in_a_month(k) pgm_read_word_near(cumulativeDIAM + k)
 
-void print_time(uint8_t _mins, uint8_t _hour, const boolean new_line = false)
+void print_time(uint8_t _hour, uint8_t _mins, const boolean new_line = false)
 {
 #if (_DEBUG > 0)
 	if (_hour < 10) { Serial.print('0'); }
@@ -52,10 +52,10 @@ void print_date(uint8_t _DD, uint8_t _MM, uint8_t _YY, const boolean new_line = 
 #endif
 }
 
-void print_datetime(uint8_t _mins, uint8_t _hour,
+void print_datetime(uint8_t _hour, uint8_t _mins,
 	uint8_t _DD, uint8_t _MM, uint8_t _YY)
 {
-	print_time(_mins, _hour);
+	print_time(_hour, _mins);
 #if (_DEBUG > 0)
 	Serial.print(F(" on "));
 #endif
@@ -176,7 +176,7 @@ void timeDateCompensate(const int8_t &input, T &TD0, int8_t &TD1, const uint8_t 
 
 // Note: I normally use the gps to utc seconds value (-17seconds as of Dec 2015) for _timezone_secs
 template <typename T>
-void addTimezone(T &secs, T &mins, T &hour, T &DD, T &MM, T &YY, const int8_t &_timezone_hours, const int8_t &_timezone_mins, const int8_t _timezone_secs = 0)
+void addTimezone(T &hour, T &mins, T &secs, T &DD, T &MM, T &YY, const int8_t &_timezone_hours, const int8_t &_timezone_mins, const int8_t _timezone_secs = 0)
 {
 	int8_t secs_ = secs + _timezone_secs;
 	int8_t mins_ = mins + _timezone_mins;
