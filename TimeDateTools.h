@@ -19,7 +19,7 @@ const uint16_t cumulativeDIAM[12] PROGMEM = { 0 , 31, 59, 90,120,151,181,212,243
 #define days_in_a_month(k) pgm_read_byte_near(DIAM + k)
 #define cumulative_days_in_a_month(k) pgm_read_word_near(cumulativeDIAM + k)
 
-void print_time(uint8_t _hour, uint8_t _mins, const boolean new_line = false)
+void print_time(uint8_t _hour, uint8_t _mins, const bool new_line = false)
 {
 #if (_DEBUG > 0)
 	if (_hour < 10) { Serial.print('0'); }
@@ -34,7 +34,7 @@ void print_time(uint8_t _hour, uint8_t _mins, const boolean new_line = false)
 #endif
 }
 
-void print_date(uint8_t _DD, uint8_t _MM, uint8_t _YY, const boolean new_line = false)
+void print_date(uint8_t _DD, uint8_t _MM, uint8_t _YY, const bool new_line = false)
 {
 #if (_DEBUG > 0)
 	if (_DD < 10) { Serial.print('0'); }
@@ -124,19 +124,19 @@ template <typename T>
 uint16_t to_day_of_the_year(const T &_DD, const T &_MM, const bool &_is_leap_year)
 {
 	// if its a leap year and the month is March -> December, add +1
-	return cumulative_days_in_a_month(_MM - 1) + _DD + (_is_leap_year & (_MM > 1));
+	return cumulative_days_in_a_month(_MM - 1) + _DD + (_is_leap_year & (_MM > 2));
 }
 
 template <typename T>
 void from_day_of_the_year(const uint16_t &doty, T &_DD, T &_MM, const bool &_is_leap_year)
 {
-	for (uint8_t i = 1; i < 12; ++i)
+	for (uint8_t m = 1; m < 12; ++m)
 	{
-		uint8_t k = (_is_leap_year & (i > 1));
-		if (doty <= cumulative_days_in_a_month(i) + k)
+		uint8_t d = (_is_leap_year & (m > 2));
+		if (doty <= cumulative_days_in_a_month(m) + d)
 		{
-			_MM = i;
-			_DD = doty - (cumulative_days_in_a_month(_MM - 1) + k);
+			_MM = m;
+			_DD = doty - (cumulative_days_in_a_month(_MM - 1) + d);
 			return;
 		}
 	}
