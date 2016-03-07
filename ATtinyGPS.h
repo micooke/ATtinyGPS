@@ -1,13 +1,29 @@
 #ifndef ATtinyGPS_h
 #define ATtinyGPS_h
 
-#include <SoftwareSerial.h>
-#include <TimeDateTools.h>
+#ifndef _DEBUG
+#define _DEBUG 0
+#endif
 
+#include <TimeDateTools.h>
 
 #ifndef GPS_MODULE
 #define GPS_MODULE 1 //mediatek : PMTK ascii command messages
 //#define GPS_MODULE 0 //ublox : u-center hex command messages
+#endif
+
+#ifdef __AVR_ATtiny85__
+#ifndef TIMESYNC_ONLY
+#define TIMESYNC_ONLY 1
+#define NO_FLOATS
+#define NO_SETUP
+#endif
+#else
+#define TIMESYNC_ONLY 0
+#endif
+
+#ifndef NO_SETUP
+#include <Print.h>
 #endif
 
 /*
@@ -73,41 +89,68 @@ case 18: break; // ZDA
 case 19: break; // MCHN
 */
 
+#if (TIMESYNC_ONLY == 0)
+#ifdef NO_FLOATS
+// Altitude is in meters already, so multiply by 100 to get cm
+static uint16_t LATLONG_DIVISOR = 1000000; // 0.11m accuracy
+static int32_t toScaledValue(int16_t lhs, int16_t rhs, uint16_t RHS_DIVISOR) { return (lhs * LATLONG_DIVISOR) + (rhs * LATLONG_DIVISOR / RHS_DIVISOR); }
+#else
+static float toScaledValue(int16_t lhs, int16_t rhs, uint16_t RHS_DIVISOR) { return lhs + (float)rhs / RHS_DIVISOR; }
+#endif
+#endif
+
 class ATtinyGPS
 {
 private:
-	char msg[7] = { '$' };
-	int state_ = 0;
+	char msg[4] = { '\0' };
+	uint8_t state_ = 0;
 	boolean new_data_ = false;
 
 	int32_t lhs_;
-	uint16_t rhs_;
-	uint8_t dp_, token_;
+	uint32_t rhs_;
+	uint8_t token_;
+	uint32_t DIVISOR;
 	boolean LR_switch = false;
 	int8_t timezone_HH, timezone_MM;
+
 public:
 	uint8_t nmea_index;
 
 	// GPS variables
-	uint32_t Time, Date, Course;
+	uint32_t Time, Date;
 	uint8_t hh, mm, ss, ms;
 	uint8_t DD, MM, YY;
 	uint16_t YYYY;
 
 	int8_t GPS_to_UTC_offset; // -17 (seconds - as of 1/1/16)
 
-	float Lat, Long, Alt, Height, Knots;
+	//
+#if (TIMESYNC_ONLY == 0)
+#ifdef NO_FLOATS
+	int32_t Lat, Long, Alt, Height, Knots, Pace;
+	uint16_t kmph, mps;
+#else
+	float Lat, Long, Alt, Height, Knots, Pace;
+	float kmph, mps;
+#endif
+
 
 	uint8_t satellites;
 	uint8_t quality;
+#endif
 	boolean IsValid;
 
 	ATtinyGPS() : timezone_HH(0), timezone_MM(0),
 		GPS_to_UTC_offset(0), IsValid(false),
-		quality(0), satellites(0),
-		DD(6), MM(1), YY(80), YYYY(1980) {}; // Set gps time to GPS epoch : UTC 00:00 on 06/Jan/1980
+		DD(6), MM(1), YY(80), YYYY(1980) // Set gps time to GPS epoch : UTC 00:00 on 06/Jan/1980
+	{
+#if (TIMESYNC_ONLY == 0)
+		quality = 0; satellites = 0;
+#endif
+	};
+#ifndef NO_SETUP
 #if (GPS_MODULE == 0)
-	void ublox_command(SoftwareSerial &ttl, uint8_t * command)
+	void ublox_command(Print &ttl, uint8_t * command)//SoftwareSerial &ttl, uint8_t * command)
 	{
 		{
 			for (int i = 0; i < sizeof(command); i++) {
@@ -120,7 +163,7 @@ public:
 	}
 #endif
 
-	void setup(SoftwareSerial &ttl)
+	void setup(Print &ttl)//SoftwareSerial &ttl)
 	{
 #if (GPS_MODULE == 1)
 		// Setup the GPS
@@ -135,8 +178,8 @@ public:
 			//MDGP,MDBG,ZDA,MCHN*checksum
 			"0,0,0,0*28"));
 		//ttl.println(F("$PMTK314,-1*04")); // reset NMEA sequences to system default
-
-		//1Hz update rate
+#ifndef __AVR_ATtiny85__
+//1Hz update rate
 		ttl.println(F("$PMTK220,1000*1F"));
 		//ttl.println(F("$PMTK220,100*2F"));//10Hz update rate
 		//ttl.println(F("$PMTK220,200*2C"));//5Hz update rate
@@ -148,6 +191,7 @@ public:
 		//ttl.println(F("$PMTK251,57600*2C"));
 		//ttl.println(F("$PMTK251,115200*1F"));
 		//ttl.println(F("$PMTK251,0*28")); // reset BAUD rate to system default
+#endif
 #else
 		/// ublox commands
 		// captures taken by spying raw serial traffic from u-centre (https://www.u-blox.com/en/product/u-center-windows) commands
@@ -211,6 +255,7 @@ public:
 		ublox_command(ttl, GAL_rate);
 #endif
 	}
+#endif
 
 	void setTimezone(const int8_t &_hour, const int8_t &_mins)
 	{
@@ -226,25 +271,24 @@ public:
 
 	void parse(char c)
 	{
+		// Start of a NMEA message
 		if (c == '$')
 		{
 			lhs_ = 0; rhs_ = 0; LR_switch = false;
 			token_ = 0; state_ = 0; nmea_index = 0;
-			msg[5] = '?'; new_data_ = false;
+			DIVISOR = 1;
+			msg[0] = '?'; new_data_ = false;
 		}
-
 		// Start recording the NMEA message type
-		if (state_ < 6)
+		else if ((state_ > 2) & (state_ < 6))
 		{
-			msg[state_] = c;
-			state_++;
-			return;
+			msg[state_ - 3] = c;
 		}
 		// Set the NMEA index
 		else if (state_ == 6)
 		{
-			if (strcmp(msg, "$GPRMC") == 0) { nmea_index = 1; }
-			else if (strcmp(msg, "$GPGGA") == 0) { nmea_index = 4; }
+			if (strcmp(msg, "RMC") == 0) { nmea_index = 1; }
+			else if (strcmp(msg, "GGA") == 0) { nmea_index = 4; }
 			else
 			{
 #if (_DEBUG > 0)
@@ -252,8 +296,6 @@ public:
 #endif
 				nmea_index = 0;
 			}
-
-			state_++;
 		}
 		// Parse the data
 		else if (nmea_index > 0)
@@ -273,12 +315,17 @@ public:
 				// 0 = invalid, GPS fix, DGPS fix, PPS fix, Real Time Kinematic (RTK), Float RTK, estimated (dead reckoning), Manual input, 8 = Simulation
 			case 'A':
 				// RMC: token 1
+#if (TIMESYNC_ONLY == 0)
 				quality = 1;
+#endif
 				IsValid = true; break;
 			case 'V':
+#if (TIMESYNC_ONLY == 0)
 				// RMC: token 1
 				quality = 0;
+#endif
 				IsValid = false; break;
+#if (TIMESYNC_ONLY == 0)
 			case 'N':
 				// N/S(-ve) - RMC: token 3
 				// N/S(-ve) - GGA: token 2
@@ -287,6 +334,7 @@ public:
 				// E/W(-ve) - RMC: token 5
 				// E/W(-ve) - GGA: token 4
 				if ((token_ == 5) | (token_ == 4)) { Long = -Long; } break;
+#endif
 			case '.':
 				LR_switch = true;
 				break;
@@ -294,6 +342,7 @@ public:
 				saveToken();
 				token_++;
 				LR_switch = false;
+				DIVISOR = 1;
 				break;
 			case '*':
 				nmea_index = 0;
@@ -305,7 +354,7 @@ public:
 				if (LR_switch) // Right
 				{
 					rhs_ = rhs_ * 10 + d;
-					dp_++;
+					DIVISOR *= 10;
 				}
 				else // Left
 				{
@@ -314,6 +363,7 @@ public:
 				break;
 			}
 		}
+		if (state_ < 7) { state_++; }
 	}
 
 	boolean new_data()
@@ -357,35 +407,64 @@ private:
 			print_time(hh, mm, true);
 #endif
 			break;
+#if (TIMESYNC_ONLY == 0)
 		case 1:
-			if (nmea_index == 4) { Lat = lhs_ + static_cast<float>(rhs_) / pow(10.0, dp_); }
+			if (nmea_index == 4) { Lat = toScaledValue(lhs_, rhs_, DIVISOR); }
 			break;
 		case 2:
-			if (nmea_index == 1) { Lat = lhs_ + static_cast<float>(rhs_) / pow(10.0, dp_); }
+			if (nmea_index == 1) { Lat = toScaledValue(lhs_, rhs_, DIVISOR); }
 			break;
 		case 3:
-			if (nmea_index == 4) { Long = lhs_ + static_cast<float>(rhs_) / pow(10.0, dp_); }
+			if (nmea_index == 4) { Long = toScaledValue(lhs_, rhs_, DIVISOR); }
 			break;
 		case 4:
-			if (nmea_index == 1) { Long = lhs_ + static_cast<float>(rhs_) / pow(10.0, dp_); }
+			if (nmea_index == 1) { Long = toScaledValue(lhs_, rhs_, DIVISOR); }
 			break;
 		case 5:
 			if (nmea_index == 4) { quality = lhs_; }
 			break;
 		case 6:
-			if (nmea_index == 1) { Knots = lhs_ + static_cast<float>(rhs_) / pow(10.0, dp_); }
+			if (nmea_index == 1)
+			{
+				//    TRUTH : 22.40 Knots, 41.4848 km/h, 11.5235 m/s, 1.44631 min/km (1m26s/km)
+				//    FLOAT : 22.40 Knots, 41.5219 km/h, 11.5338 m/s, 1.44501 min/km
+				// NO FLOAT : 2240 Knots, 4152 km/h, 1153 m/s, 86 secs/km
+
+#ifdef NO_FLOATS
+				Knots = lhs_ * 100 + rhs_ * (100 / DIVISOR);
+
+				// Note: All values are multiplied by 100 for fixed point
+				kmph = Knots * 76 / 41; // 6080 / 3280 = 76/41
+				// 6080/3280 = (6080*256/3280) >> 8 = (19456/41) >> 8
+				//kmph = (Knots * 474) >> 8; // 1.852 (6080/3280) = approx. (474/256) - 0.11% error
+				mps = Knots * 190 / 369; // 6080 / 11808 = 190/369
+				// 6080/11808 = (6080*256/11808) >> 8 = (48640/369) >> 8
+				//mps = (Knots * 132) >> 8; // 0.5149 (6080/(3280 * 3.6)) = (6080/11808) = approx. (132/256) - 0.14% error
+				//Pace = (3600 * 41 * 100) / (Knots * 76);
+				Pace = (360000) / kmph;
+				//Pace = 369000 / (19 * Knots); // (1/100)*(6080/3280) = 38/205. 3600 * 205 / 38 = 369000/19
+				// (369000/19) = (369000/19*256) << 8 = (46125/608) << 8
+#else
+				Knots = lhs_ + (float)rhs_ / DIVISOR;
+				kmph = Knots * 6080 / 3280; // 1.853 (6080/3280) = approx. (474/256) - 0.11% error
+				mps = Knots * 6080 / 11808; // 0.5149 (6080/(3280 * 3.6)) = (6080/11808) = approx. (132/256) - 0.14% error
+				//Pace = 3600 / (Knots * 6080 / 3280);
+				Pace = 3600 / kmph;
+#endif
+			}
 			if (nmea_index == 4) { satellites = lhs_; }
 			break;
 		case 7:
 			//  1 : RMC -> Track angle in degrees true
 			break;
+#endif
 		case 8:
 			if (nmea_index == 1)
 			{
 				//  1 : RMC -> Date: DDMMYY
 				Date = lhs_;
 				YY = Date % 100; Date /= 100;
-				YYYY = 2000 + YY; // may have to change this in 85 years...
+				YYYY = 2000 + YY; // may have to change this in 84 years...
 				MM = Date % 100; Date /= 100;
 				DD = Date % 100; Date = lhs_;
 #if (_DEBUG == 2)
@@ -394,13 +473,23 @@ private:
 				Serial.print("PROCESSED DD/MM/YY: "); Serial.print(DD); Serial.print("/"); Serial.print(MM); Serial.print("/"); Serial.println(YY);
 #endif
 			}
-			if (nmea_index == 4) { Alt = lhs_ + static_cast<float>(rhs_) / pow(10.0, dp_); }
+#if (TIMESYNC_ONLY == 0)
+			if (nmea_index == 4)
+			{
+				Alt = lhs_ * 100 + (float)rhs_ * (100 / DIVISOR);
+			}
+#endif
 			break;
 		case 9:
 			break;
+#if (TIMESYNC_ONLY == 0)
 		case 10:
-			if (nmea_index == 4) { Height = lhs_ + static_cast<float>(rhs_) / pow(10.0, dp_); }
+			if (nmea_index == 4)
+			{
+				Height = lhs_ * 100 + (float)rhs_ * (100 / DIVISOR);
+			}
 			break;
+#endif
 		}
 
 		// clear temp variables

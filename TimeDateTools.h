@@ -55,23 +55,20 @@ void print_date(uint8_t _DD, uint8_t _MM, uint8_t _YY, const bool new_line = fal
 void print_datetime(uint8_t _hour, uint8_t _mins,
 	uint8_t _DD, uint8_t _MM, uint8_t _YY)
 {
-	print_time(_hour, _mins);
 #if (_DEBUG > 0)
+	print_time(_hour, _mins);
 	Serial.print(F(" on "));
-#endif
 	print_date(_DD, _MM, _YY, true);
+#endif
 }
 
-inline uint8_t ascii_to_int(const char &c0, const char &c1)
+#if (REQUIRE_TIMEDATESTRING == 1)
+
+uint8_t ascii_to_int(const char &c0, const char &c1)
 {
 	return (c0 - '0') * 10 + (c1 - '0');
 }
 
-#if !defined(REQUIRE_TIMEDATESTRING)
-#define REQUIRE_TIMEDATESTRING 0
-#endif
-
-#if (REQUIRE_TIMEDATESTRING == 1)
 void TimeString_to_HHMMSS(const char timeString[], uint8_t &hh, uint8_t &mm, uint8_t &ss)
 {
 	//Example: "23:59:01"
