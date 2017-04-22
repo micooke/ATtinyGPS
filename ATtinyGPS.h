@@ -102,6 +102,8 @@ static float toScaledValue(int16_t lhs, int16_t rhs, uint16_t RHS_DIVISOR) { ret
 class ATtinyGPS
 {
 private:
+	uint32_t millis_;
+	uint16_t sync_time_ms = 800; // allow messages to take up to 0.8s
 	char msg[4] = { '\0' };
 	uint8_t state_ = 0;
 	boolean new_data_ = false;
@@ -124,7 +126,6 @@ public:
 
 	int8_t GPS_to_UTC_offset; // -17 (seconds - as of 1/1/16)
 
-	//
 #if (TIMESYNC_ONLY == 0)
 #ifdef NO_FLOATS
 	int32_t Lat, Long, Alt, Height, Knots, Pace;
@@ -134,21 +135,19 @@ public:
 	float kmph, mps;
 #endif
 
-
 	uint8_t satellites;
 	uint8_t quality;
 #endif
 	boolean IsValid;
 
 	ATtinyGPS() : timezone_HH(0), timezone_MM(0),
-		GPS_to_UTC_offset(0), IsValid(false),
+		GPS_to_UTC_offset(0), IsValid(false), millis_(0),
 		DD(6), MM(1), YY(80), YYYY(1980) // Set gps time to GPS epoch : UTC 00:00 on 06/Jan/1980
 	{
 #if (TIMESYNC_ONLY == 0)
 		quality = 0; satellites = 0;
 #endif
 	};
-#ifndef NO_SETUP
 #if (GPS_MODULE == 0)
 	void ublox_command(Print &ttl, uint8_t * command)//SoftwareSerial &ttl, uint8_t * command)
 	{
@@ -165,6 +164,7 @@ public:
 
 	void setup(Print &ttl)//SoftwareSerial &ttl)
 	{
+#ifndef NO_SETUP
 #if (GPS_MODULE == 1)
 		// Setup the GPS
 		/// mediatek (PMTK) commands
@@ -178,8 +178,7 @@ public:
 			//MDGP,MDBG,ZDA,MCHN*checksum
 			"0,0,0,0*28"));
 		//ttl.println(F("$PMTK314,-1*04")); // reset NMEA sequences to system default
-#ifndef __AVR_ATtiny85__
-//1Hz update rate
+		//1Hz update rate
 		ttl.println(F("$PMTK220,1000*1F"));
 		//ttl.println(F("$PMTK220,100*2F"));//10Hz update rate
 		//ttl.println(F("$PMTK220,200*2C"));//5Hz update rate
@@ -191,7 +190,6 @@ public:
 		//ttl.println(F("$PMTK251,57600*2C"));
 		//ttl.println(F("$PMTK251,115200*1F"));
 		//ttl.println(F("$PMTK251,0*28")); // reset BAUD rate to system default
-#endif
 #else
 		/// ublox commands
 		// captures taken by spying raw serial traffic from u-centre (https://www.u-blox.com/en/product/u-center-windows) commands
@@ -254,8 +252,8 @@ public:
 		ublox_command(ttl, BDS_rate);
 		ublox_command(ttl, GAL_rate);
 #endif
-	}
 #endif
+	}
 
 	void setTimezone(const int8_t &_hour, const int8_t &_mins)
 	{
@@ -274,6 +272,11 @@ public:
 		// Start of a NMEA message
 		if (c == '$')
 		{
+			uint32_t t_ms = millis();
+			if (t_ms - millis_ > sync_time_ms)
+			{
+				millis_ = t_ms;
+			}
 			lhs_ = 0; rhs_ = 0; LR_switch = false;
 			token_ = 0; state_ = 0; nmea_index = 0;
 			DIVISOR = 1;
@@ -379,11 +382,13 @@ public:
 private:
 	void saveToken()
 	{
+		uint16_t temp_ms = 0;
 		switch (token_)
 		{
 		case 0: // Time: hhmmss.ms
-			Time = lhs_;
-			ms = rhs_;
+			temp_ms = rhs_ + (millis_/10 % 100);
+			Time = lhs_ + (temp_ms/100);
+			ms = temp_ms % 100;
 			ss = Time % 100; Time /= 100;
 			mm = Time % 100; Time /= 100;
 			hh = Time % 100; Time = lhs_;
@@ -393,7 +398,7 @@ private:
 			Serial.print("PROCESSED hh:mm:ss : "); Serial.print(hh); Serial.print(":"); Serial.print(mm); Serial.print(":"); Serial.println(ss);
 #endif
 			// Add the local timezone to the GPS time
-			// And add the GPS to UTC offset
+			// And add the GPS to UTC offset (default == 0)
 			// (GPS doesn't compensate for leap seconds, as of Dec 2015 its 17 seconds ahead of UTC)
 #if (_DEBUG == 2)
 			Serial.print("GPS time : ");
@@ -402,6 +407,7 @@ private:
 			print_time(timezone_HH, timezone_MM, true);
 #endif
 			addTimezone<uint8_t>(hh, mm, ss, DD, MM, YY, timezone_HH, timezone_MM, GPS_to_UTC_offset);
+			Time = hh*3600 + mm*60 + ss;
 #if (_DEBUG == 2)
 			Serial.print("Local time : ");
 			print_time(hh, mm, true);

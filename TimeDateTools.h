@@ -9,7 +9,7 @@
 #endif
 
 #if !defined(_DEBUG)
-#define _DEBUG 1
+#define _DEBUG 0
 #endif
 
 //											 Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
@@ -86,7 +86,7 @@ void DateString_to_DDMMYY(const char dateString[], uint8_t &DD, uint8_t &MM, uin
 	// convert the Month string to Month index [0->12]
 	// Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
 	switch (dateString[0]) {
-	case 'J': MM = dateString[1] == 'a' ? 1 : MM = dateString[2] == 'n' ? 6 : 7; break;
+	case 'J': MM = dateString[1] == 'a' ? 1 : dateString[2] == 'n' ? 6 : 7; break;
 	case 'F': MM = 2; break;
 	case 'A': MM = dateString[2] == 'r' ? 4 : 8; break;
 	case 'M': MM = dateString[2] == 'r' ? 3 : 5; break;
